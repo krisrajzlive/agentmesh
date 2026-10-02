@@ -15,17 +15,15 @@ class UnsafeURLError(ValueError):
 def _blocked(
     address: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool
 ) -> bool:
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+        address = address.ipv4_mapped  # ::ffff:169.254.169.254 is still the metadata service
     # Cloud metadata endpoints, multicast and unspecified addresses are never acceptable.
-    if (
-        address.is_link_local
-        or address.is_multicast
-        or address.is_unspecified
-        or address.is_reserved
-    ):
+    if address.is_link_local or address.is_multicast or address.is_unspecified:
         return True
-    if allow_private:
-        return False
-    return address.is_private or address.is_loopback
+    if address.is_loopback or address.is_private:
+        return not allow_private
+    # Python flags the whole ::/8 block (including ::1) as reserved, hence the order above.
+    return address.is_reserved
 
 
 async def validate_outbound_url(url: str, *, allow_private: bool) -> None:

@@ -18,6 +18,17 @@ TERMINAL = {
 }
 
 
+def _normalise(value: Any) -> Any:
+    """Protobuf Struct stores every number as a double; restore integers."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {k: _normalise(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_normalise(v) for v in value]
+    return value
+
+
 @dataclass(slots=True)
 class ArtifactData:
     artifact_id: str
@@ -28,7 +39,7 @@ class ArtifactData:
     @classmethod
     def from_proto(cls, artifact: Artifact) -> ArtifactData:
         texts = [p.text for p in artifact.parts if p.HasField("text")]
-        data = [MessageToDict(p.data) for p in artifact.parts if p.HasField("data")]
+        data = [_normalise(MessageToDict(p.data)) for p in artifact.parts if p.HasField("data")]
         return cls(
             artifact_id=artifact.artifact_id,
             name=artifact.name,

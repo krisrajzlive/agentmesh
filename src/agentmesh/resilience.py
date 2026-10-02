@@ -95,6 +95,11 @@ class TokenBucket:
         self._tokens = min(self._capacity, self._tokens + (now - self._updated) * self._rate)
         self._updated = now
 
+    @property
+    def available(self) -> float:
+        """Tokens currently in the bucket (as of the last refill)."""
+        return self._tokens
+
     async def try_acquire(self, cost: float = 1.0) -> bool:
         async with self._lock:
             self._refill()

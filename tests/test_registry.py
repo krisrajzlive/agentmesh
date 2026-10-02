@@ -178,5 +178,10 @@ async def test_ssrf_validation_blocks_dangerous_targets():
         await validate_outbound_url("http://127.0.0.1:8080", allow_private=False)
     with pytest.raises(UnsafeURLError):
         await validate_outbound_url("http://10.1.2.3", allow_private=False)
+    with pytest.raises(UnsafeURLError):
+        await validate_outbound_url("http://[::ffff:169.254.169.254]/", allow_private=True)
+    with pytest.raises(UnsafeURLError):
+        await validate_outbound_url("http://[::1]:9000", allow_private=False)
+    await validate_outbound_url("http://[::1]:9000", allow_private=True)
     await validate_outbound_url("http://10.1.2.3", allow_private=True)  # in-cluster agents
     await validate_outbound_url("http://127.0.0.1:9001", allow_private=True)

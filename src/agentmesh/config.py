@@ -76,11 +76,20 @@ class Settings(BaseSettings):
     outbound_bearer_token: SecretStr | None = None
     agent_call_timeout_seconds: float = 60.0
 
+    # --- MCP bridge ------------------------------------------------------------
+    mcp_server_command: str | None = None
+    mcp_server_url: str | None = None
+    mcp_tool_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
     # --- Gateway -------------------------------------------------------------
+    gateway_public_url: str | None = None
     gateway_rate_limit_per_minute: int = 120
+    gateway_max_body_bytes: int = 10 * 1024 * 1024
     gateway_redis_url: str | None = None
 
-    @field_validator("llm_providers", "api_keys", "static_agent_urls", mode="before")
+    @field_validator(
+        "llm_providers", "api_keys", "static_agent_urls", "mcp_tool_allowlist", mode="before"
+    )
     @classmethod
     def _csv(cls, value: object) -> object:
         return _split_csv(value)

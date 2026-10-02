@@ -15,6 +15,7 @@ AgentBundle = tuple[AgentSpec, AgentExecutor]
 # slug -> "module:function"; each function takes Settings and returns (spec, executor).
 _REGISTRY: dict[str, str] = {
     "fx": "agentmesh.agents.fx:build_agent",
+    "mcp-bridge": "agentmesh.agents.mcp_bridge:build_agent",  # extra: mcp
     "orchestrator": "agentmesh.orchestrator:build_agent",
     "documents": "agentmesh.agents.documents:build_agent",
     "batch": "agentmesh.agents.batch:build_agent",

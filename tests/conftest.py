@@ -11,8 +11,14 @@ from a2a.client.client import Client
 from starlette.applications import Starlette
 
 from agentmesh.config import Settings
+from agentmesh.observability import configure_logging
 
 BASE_URL = "http://agent.test"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _quiet_logs() -> None:
+    configure_logging("WARNING", json_logs=False)
 
 
 @pytest.fixture
