@@ -65,7 +65,22 @@ class Settings(BaseSettings):
     push_signing_secret: SecretStr | None = None
     allow_private_push_urls: bool = False
 
-    @field_validator("llm_providers", "api_keys", mode="before")
+    # --- Discovery / service-to-service -----------------------------------
+    registry_url: str | None = None
+    registry_database_url: str = "memory"
+    registry_health_interval_seconds: float = 30.0
+    registry_unhealthy_after: int = 3
+    registry_allow_private_urls: bool = True
+    static_agent_urls: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    outbound_api_key: SecretStr | None = None
+    outbound_bearer_token: SecretStr | None = None
+    agent_call_timeout_seconds: float = 60.0
+
+    # --- Gateway -------------------------------------------------------------
+    gateway_rate_limit_per_minute: int = 120
+    gateway_redis_url: str | None = None
+
+    @field_validator("llm_providers", "api_keys", "static_agent_urls", mode="before")
     @classmethod
     def _csv(cls, value: object) -> object:
         return _split_csv(value)

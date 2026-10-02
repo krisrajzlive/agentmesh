@@ -17,6 +17,7 @@ from a2a.types import (
     SecurityScheme,
     StringList,
 )
+from google.protobuf.struct_pb2 import Struct
 
 from agentmesh import __version__
 from agentmesh.config import Settings
@@ -24,6 +25,7 @@ from agentmesh.config import Settings
 JSONRPC_PATH = "/a2a/jsonrpc"
 REST_PATH = "/a2a/rest"
 PROTOCOL_VERSION = "1.0"
+RUNTIME_EXTENSION_URI = "urn:agentmesh:ext:runtime:v1"
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,12 @@ class AgentSpec:
     def __post_init__(self) -> None:
         if not self.skills:
             raise ValueError("an agent must declare at least one skill")
+
+
+def _struct(values: dict[str, str]) -> Struct:
+    struct = Struct()
+    struct.update(values)
+    return struct
 
 
 def _security(settings: Settings) -> tuple[dict[str, SecurityScheme], list[SecurityRequirement]]:
@@ -98,7 +106,15 @@ def build_agent_card(
         capabilities=AgentCapabilities(
             streaming=spec.streaming,
             push_notifications=spec.push_notifications,
-            extensions=spec.extensions,
+            extensions=[
+                AgentExtension(
+                    uri=RUNTIME_EXTENSION_URI,
+                    description="Describes the framework and runtime hosting this agent.",
+                    required=False,
+                    params=_struct({"framework": spec.framework, "runtime_version": __version__}),
+                ),
+                *spec.extensions,
+            ],
             extended_agent_card=bool(spec.extended_skills),
         ),
         security_schemes=schemes,

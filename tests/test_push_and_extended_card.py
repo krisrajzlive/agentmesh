@@ -42,7 +42,7 @@ def test_signature_roundtrip_and_tamper_detection():
     assert not verify_push_signature(SECRET, body=body, timestamp="x", signature=sig)
 
 
-async def _wait_for(predicate, timeout: float = 5.0) -> None:  # noqa: ASYNC109
+async def _wait_for(predicate, timeout: float = 5.0) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while not predicate():

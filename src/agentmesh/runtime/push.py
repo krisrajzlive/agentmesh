@@ -133,7 +133,7 @@ class SignedPushNotificationSender(BasePushNotificationSender):
         if self._tails.get(key) is task:
             del self._tails[key]
 
-    async def drain(self, timeout: float = 15.0) -> None:  # noqa: ASYNC109
+    async def drain(self, timeout: float = 15.0) -> None:
         """Wait for in-flight deliveries (called on shutdown)."""
         if self._pending:
             await asyncio.wait(set(self._pending), timeout=timeout)
