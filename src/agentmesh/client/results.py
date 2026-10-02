@@ -54,6 +54,13 @@ class TaskResult:
         return name.removeprefix("TASK_STATE_").lower()
 
     @property
+    def output_text(self) -> str:
+        """The agent's answer: final status text, else the text carried by its artifacts."""
+        if self.text:
+            return self.text
+        return "\n".join(a.text for a in self.artifacts if a.text)
+
+    @property
     def is_terminal(self) -> bool:
         return self.state in TERMINAL
 

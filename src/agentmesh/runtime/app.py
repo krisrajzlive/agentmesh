@@ -97,6 +97,9 @@ def create_agent_app(
         finally:
             state["ready"] = False
             await sender.drain()
+            closer = getattr(executor, "aclose", None)
+            if closer is not None:
+                await closer()
             await http_client.aclose()
             await persistence.close()
             log.info("agent_stopped", agent=spec.slug)

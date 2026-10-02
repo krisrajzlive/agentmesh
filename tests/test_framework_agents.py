@@ -2,22 +2,16 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncGenerator
-
-import httpx
 import pytest
 
 from agentmesh.runtime import create_agent_app
 from tests.conftest import BASE_URL, a2a_client, serve
 from tests.helpers import final_state, user_request
+from tests.support import ScriptedAdkModel, scripted_maf_client
 
 pytest.importorskip("google.adk")
 pytest.importorskip("agent_framework")
 
-from google.adk.models import BaseLlm, LlmRequest, LlmResponse
-from google.genai import types as genai
-from openai import AsyncOpenAI
 
 from agentmesh.agents.analytics import ANALYTICS_SPEC, build_analytics_executor
 from agentmesh.agents.analytics.tools import (
@@ -60,27 +54,6 @@ def test_quant_tools():
 # ----------------------------------------------------------------- Google ADK agent
 
 
-class ScriptedAdkModel(BaseLlm):
-    """Calls ``text_statistics`` once, then summarises the tool result."""
-
-    model: str = "scripted"
-
-    async def generate_content_async(
-        self, llm_request: LlmRequest, stream: bool = False
-    ) -> AsyncGenerator[LlmResponse, None]:
-        last = llm_request.contents[-1]
-        responses = [p.function_response for p in last.parts if p.function_response]
-        if responses:
-            words = responses[0].response.get("words", "?")
-            text = f"The passage contains {words} words."
-            yield LlmResponse(content=genai.Content(role="model", parts=[genai.Part(text=text)]))
-            return
-        call = genai.FunctionCall(name="text_statistics", args={"text": "alpha beta gamma delta"})
-        yield LlmResponse(
-            content=genai.Content(role="model", parts=[genai.Part(function_call=call)])
-        )
-
-
 async def test_adk_agent_runs_tools_and_answers_over_a2a(settings):
     app = create_agent_app(
         ANALYTICS_SPEC,
@@ -100,54 +73,10 @@ async def test_adk_agent_runs_tools_and_answers_over_a2a(settings):
 # ------------------------------------------------- Microsoft Agent Framework agent
 
 
-def _chunk(delta: dict, finish: str | None = None) -> str:
-    payload = {
-        "id": "chatcmpl-test",
-        "object": "chat.completion.chunk",
-        "created": 0,
-        "model": "scripted",
-        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-    }
-    return f"data: {json.dumps(payload)}\n\n"
-
-
-def _sse(chunks: list[str]) -> httpx.Response:
-    body = "".join(chunks) + "data: [DONE]\n\n"
-    return httpx.Response(200, headers={"content-type": "text/event-stream"}, text=body)
-
-
-def _scripted_openai(request: httpx.Request) -> httpx.Response:
-    """Chat-completions server: first asks for the loan tool, then summarises its result."""
-    body = json.loads(request.content)
-    assert body.get("stream"), "the Agent Framework executor streams"
-    tool_results = [m for m in body["messages"] if m["role"] == "tool"]
-    if tool_results:
-        payment = json.loads(tool_results[-1]["content"])
-        text = f"Your monthly payment is {payment['monthly_payment']}."
-        return _sse([_chunk({"role": "assistant", "content": text}), _chunk({}, "stop")])
-    call = {
-        "index": 0,
-        "id": "call_1",
-        "type": "function",
-        "function": {
-            "name": "loan_payment",
-            "arguments": json.dumps({"principal": 250000, "annual_rate_percent": 6.5, "years": 30}),
-        },
-    }
-    return _sse([_chunk({"role": "assistant", "tool_calls": [call]}), _chunk({}, "tool_calls")])
-
-
 async def test_agent_framework_agent_runs_tools_and_answers_over_a2a(settings):
-    from agent_framework.openai import OpenAIChatCompletionClient
-
-    http_client = httpx.AsyncClient(transport=httpx.MockTransport(_scripted_openai))
-    client = OpenAIChatCompletionClient(
-        model="scripted",
-        async_client=AsyncOpenAI(
-            api_key="test", base_url="http://llm.test/v1", http_client=http_client
-        ),
+    app = create_agent_app(
+        QUANT_SPEC, build_quant_executor(scripted_maf_client()), settings, public_url=BASE_URL
     )
-    app = create_agent_app(QUANT_SPEC, build_quant_executor(client), settings, public_url=BASE_URL)
     async with serve(app) as http:
         card = (await http.get("/.well-known/agent-card.json")).json()
         a2a = await a2a_client(http, streaming=False)
