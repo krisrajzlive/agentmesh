@@ -1,0 +1,33 @@
+# Default deny, then allow only the flows the architecture needs:
+#   ingress controller -> gateway -> {registry, orchestrator, agents}
+#   orchestrator -> {registry, agents};  agents -> registry (health) is not required.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: agentmesh}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-ingress-to-gateway, namespace: agentmesh}
+spec:
+  podSelector:
+    matchLabels: {agentmesh/tier: edge}
+  policyTypes: [Ingress]
+  ingress:
+    - ports: [{port: 9200}]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-mesh-internal, namespace: agentmesh}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: agentmesh/tier, operator: In, values: [agents, control]}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {app.kubernetes.io/part-of: agentmesh}
+      ports: [{port: 9000}, {port: 9100}]

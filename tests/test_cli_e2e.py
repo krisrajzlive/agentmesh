@@ -3,15 +3,8 @@
 from __future__ import annotations
 
 import json
-import socket
-import threading
-import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 
-import httpx
 import pytest
-import uvicorn
 from typer.testing import CliRunner
 
 from agentmesh.agents.batch import BATCH_SPEC, BatchExecutor
@@ -19,39 +12,9 @@ from agentmesh.cli.main import app
 from agentmesh.config import Settings
 from agentmesh.registry import create_registry_app
 from agentmesh.runtime import create_agent_app
+from tests.live import serve_live
 
 runner = CliRunner()
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-@contextmanager
-def run_server(asgi) -> Iterator[str]:
-    port = free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="error", lifespan="on")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    base = f"http://127.0.0.1:{port}"
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        try:
-            if httpx.get(f"{base}/healthz", timeout=1).status_code == 200:
-                break
-        except httpx.HTTPError:
-            time.sleep(0.1)
-    else:
-        raise RuntimeError("server did not start")
-    try:
-        yield base
-    finally:
-        server.should_exit = True
-        thread.join(timeout=10)
 
 
 def settings(**kwargs) -> Settings:
@@ -60,26 +23,10 @@ def settings(**kwargs) -> Settings:
 
 @pytest.fixture
 def batch_agent():
-    config = settings()
-    port_holder = {}
-
-    # The card advertises its own public URL, so build the app after picking the port.
-    port = free_port()
-    port_holder["url"] = f"http://127.0.0.1:{port}"
-    asgi = create_agent_app(BATCH_SPEC, BatchExecutor(), config, public_url=port_holder["url"])
-    server = uvicorn.Server(uvicorn.Config(asgi, host="127.0.0.1", port=port, log_level="error"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    deadline = time.monotonic() + 15
-    while time.monotonic() < deadline:
-        try:
-            if httpx.get(f"{port_holder['url']}/readyz", timeout=1).status_code == 200:
-                break
-        except httpx.HTTPError:
-            time.sleep(0.1)
-    yield port_holder["url"]
-    server.should_exit = True
-    thread.join(timeout=10)
+    with serve_live(
+        lambda url: create_agent_app(BATCH_SPEC, BatchExecutor(), settings(), public_url=url)
+    ) as url:
+        yield url
 
 
 def test_cli_agents_and_token(monkeypatch):
@@ -123,7 +70,7 @@ def test_cli_reports_errors_cleanly():
 
 def test_cli_registry_commands_against_a_live_registry(batch_agent):
     config = settings(registry_allow_private_urls=True)
-    with run_server(create_registry_app(config)) as registry:
+    with serve_live(lambda _url: create_registry_app(config)) as registry:
         registered = runner.invoke(
             app, ["registry", "register", batch_agent, "--registry", registry]
         )

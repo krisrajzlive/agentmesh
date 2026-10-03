@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentmesh
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - registry.yaml
+  - agents.yaml
+  - gateway.yaml
+  - networkpolicy.yaml
+  - register-job.yaml
+  # - llm-agents.yaml   # opt-in: needs an LLM credential
+images:
+  - name: agentmesh
+    newName: ghcr.io/krisrajzlive/agentmesh
+    newTag: latest

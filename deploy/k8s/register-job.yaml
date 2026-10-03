@@ -1,0 +1,30 @@
+# Re-run after deploying or adding agents:  kubectl -n agentmesh create job --from=job/register-agents register-agents-$(date +%s)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: register-agents
+  namespace: agentmesh
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: register-agents, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: control}
+    spec:
+      restartPolicy: OnFailure
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: register
+          image: agentmesh
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              for target in fx documents batch orchestrator; do
+                until agentmesh registry register "http://$target:9000" --registry http://registry:9100; do
+                  echo "waiting for $target"; sleep 3
+                done
+              done
+          env:
+            - {name: AGENTMESH_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+          resources: {requests: {cpu: 20m, memory: 64Mi}, limits: {memory: 128Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}

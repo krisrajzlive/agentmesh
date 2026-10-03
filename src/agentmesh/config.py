@@ -88,6 +88,27 @@ class Settings(BaseSettings):
     gateway_redis_url: str | None = None
 
     @field_validator(
+        "openai_api_key",
+        "hf_token",
+        "ollama_api_key",
+        "jwt_secret",
+        "jwt_issuer",
+        "push_signing_secret",
+        "outbound_api_key",
+        "outbound_bearer_token",
+        "registry_url",
+        "mcp_server_command",
+        "mcp_server_url",
+        "gateway_public_url",
+        "gateway_redis_url",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """``KEY=`` in a dotenv or compose file means "not set", not "empty secret"."""
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator(
         "llm_providers", "api_keys", "static_agent_urls", "mcp_tool_allowlist", mode="before"
     )
     @classmethod

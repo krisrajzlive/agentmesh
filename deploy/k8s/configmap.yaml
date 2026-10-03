@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentmesh-config
+  namespace: agentmesh
+data:
+  AGENTMESH_ENVIRONMENT: production
+  AGENTMESH_LOG_JSON: "true"
+  AGENTMESH_LOG_LEVEL: INFO
+  AGENTMESH_AUTH_MODE: api_key
+  AGENTMESH_REGISTRY_URL: http://registry:9100
+  AGENTMESH_LLM_PROVIDERS: openai,huggingface,ollama
+  AGENTMESH_ALLOW_PRIVATE_PUSH_URLS: "false"

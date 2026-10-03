@@ -74,3 +74,26 @@ def test_provider_chain_skips_unconfigured_providers():
 def test_secrets_are_not_leaked_in_repr():
     s = Settings(_env_file=None, openai_api_key="sk-very-secret")  # type: ignore[call-arg]
     assert "sk-very-secret" not in repr(s)
+
+
+def test_blank_values_mean_unset():
+    s = Settings(  # type: ignore[call-arg]
+        _env_file=None, openai_api_key="", jwt_secret="  ", registry_url="", mcp_server_command=""
+    )
+    assert s.openai_api_key is None
+    assert s.jwt_secret is None
+    assert s.registry_url is None
+    assert build_llm(Settings(_env_file=None, llm_providers="openai", openai_api_key="")) is None  # type: ignore[call-arg]
+
+
+def test_the_shipped_env_example_is_loadable(monkeypatch):
+    from pathlib import Path
+
+    for key in list(__import__("os").environ):
+        if key.startswith("AGENTMESH_") or key in {"OPENAI_API_KEY", "HF_TOKEN", "OLLAMA_API_KEY"}:
+            monkeypatch.delenv(key)
+    example = Path(__file__).parent.parent / ".env.example"
+    s = Settings(_env_file=example)  # type: ignore[call-arg]
+    assert s.environment == "development"
+    assert s.llm_providers == ["openai", "huggingface", "ollama"]
+    assert s.openai_api_key is None and s.api_keys == [] and s.registry_url is None

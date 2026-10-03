@@ -1,0 +1,154 @@
+# Full AgentMesh stack: gateway -> orchestrator -> specialist agents, with a shared registry,
+# PostgreSQL task persistence and Redis-backed rate limiting.
+#
+#   cp .env.example .env     # set the secrets marked REQUIRED below
+#   docker compose up --build
+#   docker compose --profile llm up --build     # also starts the Google ADK and Agent Framework agents
+#
+# Only the gateway (:9200) is published. Agents, registry and orchestrator are reachable
+# solely over the internal network and accept only the service key.
+
+x-agent: &agent
+  build:
+    context: .
+    args:
+      EXTRAS: "--all-extras"
+  image: agentmesh:local
+  restart: unless-stopped
+  env_file:
+    - path: .env
+      required: false
+  environment: &agent-env
+    AGENTMESH_ENVIRONMENT: production
+    AGENTMESH_AUTH_MODE: api_key
+    AGENTMESH_API_KEYS: "mesh:${AGENTMESH_SERVICE_KEY:?set AGENTMESH_SERVICE_KEY in .env}"
+    AGENTMESH_OUTBOUND_API_KEY: "${AGENTMESH_SERVICE_KEY}"
+    AGENTMESH_TASK_STORE_URL: "postgresql+asyncpg://agentmesh:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/agentmesh"
+    AGENTMESH_REGISTRY_URL: http://registry:9100
+    AGENTMESH_PUSH_SIGNING_SECRET: "${AGENTMESH_PUSH_SIGNING_SECRET:-}"
+    AGENTMESH_ALLOW_PRIVATE_PUSH_URLS: "false"
+    PORT: "9000"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    registry:
+      condition: service_healthy
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: agentmesh
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      POSTGRES_DB: agentmesh
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentmesh -d agentmesh"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  registry:
+    <<: *agent
+    command: ["run-registry", "--port", "9100"]
+    environment:
+      <<: *agent-env
+      AGENTMESH_REGISTRY_DATABASE_URL: "postgresql+asyncpg://agentmesh:${POSTGRES_PASSWORD}@postgres:5432/agentmesh"
+      PORT: "9100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  fx:
+    <<: *agent
+    command: ["serve", "fx", "--port", "9000", "--public-url", "http://fx:9000"]
+
+  documents:
+    <<: *agent
+    command: ["serve", "documents", "--port", "9000", "--public-url", "http://documents:9000"]
+
+  batch:
+    <<: *agent
+    command: ["serve", "batch", "--port", "9000", "--public-url", "http://batch:9000"]
+
+  analytics:            # Google ADK
+    <<: *agent
+    profiles: [llm]
+    command: ["serve", "analytics", "--port", "9000", "--public-url", "http://analytics:9000"]
+
+  quant:                # Microsoft Agent Framework
+    <<: *agent
+    profiles: [llm]
+    command: ["serve", "quant", "--port", "9000", "--public-url", "http://quant:9000"]
+
+  orchestrator:
+    <<: *agent
+    command: ["serve", "orchestrator", "--port", "9000", "--public-url", "http://orchestrator:9000"]
+
+  gateway:
+    <<: *agent
+    command: ["run-gateway", "--port", "9200", "--public-url", "${AGENTMESH_PUBLIC_URL:-http://localhost:9200}"]
+    ports: ["9200:9200"]
+    environment:
+      <<: *agent-env
+      # Clients authenticate to the gateway with their own keys ("name:key,name:key").
+      AGENTMESH_API_KEYS: "${AGENTMESH_CLIENT_API_KEYS:?set AGENTMESH_CLIENT_API_KEYS in .env}"
+      AGENTMESH_GATEWAY_REDIS_URL: redis://redis:6379/0
+      PORT: "9200"
+    depends_on:
+      redis:
+        condition: service_healthy
+      registry:
+        condition: service_healthy
+
+  # One-shot: registers every agent with the registry (retrying until each is up).
+  bootstrap:
+    <<: *agent
+    restart: "no"
+    healthcheck:
+      disable: true       # one-shot job, not a server
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for target in fx documents batch orchestrator; do
+          until agentmesh registry register "http://$$target:9000" --registry http://registry:9100; do
+            echo "waiting for $$target"; sleep 2
+          done
+        done
+        if [ -n "$$REGISTER_LLM_AGENTS" ]; then
+          for target in analytics quant; do
+            until agentmesh registry register "http://$$target:9000" --registry http://registry:9100; do sleep 2; done
+          done
+        fi
+    environment:
+      <<: *agent-env
+      AGENTMESH_API_KEY: "${AGENTMESH_SERVICE_KEY}"
+      REGISTER_LLM_AGENTS: "${REGISTER_LLM_AGENTS:-}"
+    depends_on:
+      - fx
+      - documents
+      - batch
+      - orchestrator
+
+volumes:
+  pgdata:

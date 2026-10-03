@@ -1,0 +1,184 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fx
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: fx, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: fx}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: fx, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: agents}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: fx
+          image: agentmesh
+          args: [serve, fx, --port, "9000", --public-url, "http://fx:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: openai-api-key, optional: true}}}
+            - {name: HF_TOKEN, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: hf-token, optional: true}}}
+            - {name: OLLAMA_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: ollama-api-key, optional: true}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 384Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fx
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: fx}
+  ports: [{name: http, port: 9000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: documents
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: documents, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: documents}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: documents, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: agents}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: documents
+          image: agentmesh
+          args: [serve, documents, --port, "9000", --public-url, "http://documents:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: openai-api-key, optional: true}}}
+            - {name: HF_TOKEN, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: hf-token, optional: true}}}
+            - {name: OLLAMA_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: ollama-api-key, optional: true}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 384Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: documents
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: documents}
+  ports: [{name: http, port: 9000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: batch, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: batch}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: batch, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: agents}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: batch
+          image: agentmesh
+          args: [serve, batch, --port, "9000", --public-url, "http://batch:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 384Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: batch
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: batch}
+  ports: [{name: http, port: 9000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: orchestrator, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: orchestrator}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: orchestrator, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: control}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: orchestrator
+          image: agentmesh
+          args: [serve, orchestrator, --port, "9000", --public-url, "http://orchestrator:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: openai-api-key, optional: true}}}
+            - {name: HF_TOKEN, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: hf-token, optional: true}}}
+            - {name: OLLAMA_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: ollama-api-key, optional: true}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 384Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: orchestrator}
+  ports: [{name: http, port: 9000, targetPort: http}]

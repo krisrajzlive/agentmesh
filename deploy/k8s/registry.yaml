@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: registry, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app.kubernetes.io/name: registry}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: registry, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: control}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: registry
+          image: agentmesh
+          args: [run-registry, --port, "9100"]
+          ports: [{name: http, containerPort: 9100}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9100"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_REGISTRY_DATABASE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 50m, memory: 128Mi}, limits: {memory: 256Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: registry}
+  ports: [{name: http, port: 9100, targetPort: http}]

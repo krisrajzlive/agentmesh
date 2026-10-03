@@ -74,7 +74,9 @@ def create_gateway_app(
         settings.gateway_rate_limit_per_minute, settings.gateway_redis_url
     )
     breakers: dict[str, CircuitBreaker] = {}
-    catalog: dict[str, Any] = {"at": 0.0, "agents": {}}
+    # "at" starts at -inf: time.monotonic() is relative to boot, so 0.0 would look fresh on a
+    # machine that has been up for less than the cache TTL and the catalogue would never load.
+    catalog: dict[str, Any] = {"at": float("-inf"), "agents": {}}
     state = {"ready": False}
 
     upstream_headers: dict[str, str] = {}

@@ -48,7 +48,7 @@ def create_agent_app(
     persistence: Persistence | None = None,
 ) -> Starlette:
     """Build the ASGI app serving ``spec`` over JSON-RPC and HTTP+JSON, with ops endpoints."""
-    persistence = persistence or build_persistence(settings)
+    persistence = persistence or build_persistence(settings, spec.slug)
     http_client = httpx.AsyncClient(timeout=10.0)
     validator = _allow_any if settings.allow_private_push_urls else validate_push_notification_url
     sender = SignedPushNotificationSender(

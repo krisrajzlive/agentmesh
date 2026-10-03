@@ -206,3 +206,16 @@ async def test_redis_limiter_counts_per_window():
 
     clock[0] += 60  # next window
     assert (await limiter.check("alice")).allowed
+
+
+async def test_catalogue_loads_on_a_freshly_booted_host(monkeypatch):
+    """time.monotonic() counts from boot; a young uptime must not look like a warm cache."""
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("agentmesh.gateway.app.time", SimpleNamespace(monotonic=lambda: 5.0))
+    async with gateway() as gw:
+        response = await gw.get("/agents", headers={"x-api-key": "alice-key"})
+    assert [a["id"] for a in response.json()["agents"]] == [
+        "batch-processing-agent",
+        "fx-conversion-agent",
+    ]

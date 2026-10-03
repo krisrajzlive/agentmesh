@@ -1,0 +1,97 @@
+# Opt-in: Google ADK (analytics) and Microsoft Agent Framework (quant) agents.
+# They need an LLM credential (openai-api-key, hf-token or ollama-api-key) in agentmesh-secrets.
+# Enable with:  kubectl apply -f llm-agents.yaml   (then register them with the registry)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: analytics, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: analytics}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: analytics, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: agents}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: analytics
+          image: agentmesh
+          args: [serve, analytics, --port, "9000", --public-url, "http://analytics:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: openai-api-key, optional: true}}}
+            - {name: HF_TOKEN, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: hf-token, optional: true}}}
+            - {name: OLLAMA_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: ollama-api-key, optional: true}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: analytics}
+  ports: [{name: http, port: 9000, targetPort: http}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quant
+  namespace: agentmesh
+  labels: {app.kubernetes.io/name: quant, app.kubernetes.io/part-of: agentmesh}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app.kubernetes.io/name: quant}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: quant, app.kubernetes.io/part-of: agentmesh, agentmesh/tier: agents}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: quant
+          image: agentmesh
+          args: [serve, quant, --port, "9000", --public-url, "http://quant:9000"]
+          ports: [{name: http, containerPort: 9000}]
+          envFrom: [{configMapRef: {name: agentmesh-config}}]
+          env:
+            - {name: PORT, value: "9000"}
+            - {name: SERVICE_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: service-key}}}
+            - {name: AGENTMESH_API_KEYS, value: "mesh:$(SERVICE_KEY)"}  # must follow SERVICE_KEY
+            - {name: AGENTMESH_OUTBOUND_API_KEY, value: "$(SERVICE_KEY)"}
+            - {name: AGENTMESH_TASK_STORE_URL, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: task-store-url}}}
+            - {name: AGENTMESH_PUSH_SIGNING_SECRET, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: push-signing-secret}}}
+            - {name: OPENAI_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: openai-api-key, optional: true}}}
+            - {name: HF_TOKEN, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: hf-token, optional: true}}}
+            - {name: OLLAMA_API_KEY, valueFrom: {secretKeyRef: {name: agentmesh-secrets, key: ollama-api-key, optional: true}}}
+          readinessProbe: {httpGet: {path: /readyz, port: http}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: quant
+  namespace: agentmesh
+spec:
+  selector: {app.kubernetes.io/name: quant}
+  ports: [{name: http, port: 9000, targetPort: http}]
